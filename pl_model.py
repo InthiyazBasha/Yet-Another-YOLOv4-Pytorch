@@ -86,13 +86,14 @@ class YOLOv4PL(pl.LightningModule):
             return self.basic_training_step(batch)
 
     def training_epoch_end(self, outputs):
-        training_loss_mean = torch.stack([x['loss'] for x in outputs]).mean()
-        # return {"loss": training_loss_mean, "log": {"training_loss_epoch": training_loss_mean}}
+        training_loss_mean = torch.stack([x['training_loss'] for x in outputs]).mean()
+        return {"loss": training_loss_mean, "log": {"training_loss_epoch": training_loss_mean}}
 
     def validation_step(self, batch, batch_idx):
         filenames, images, labels = batch
         y_hat, loss = self(images, labels)
-        return {"val_loss": loss}
+        logger_logs = {"training_loss": loss}
+        return {"val_loss": loss, "log": logger_logs}
 
     def validation_epoch_end(self, outputs):
         val_loss_mean = torch.stack([x['val_loss'] for x in outputs]).mean()
