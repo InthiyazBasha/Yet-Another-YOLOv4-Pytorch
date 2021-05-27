@@ -1,13 +1,11 @@
-import torch
-from torch import nn
-import torch.nn.functional as F
-from torch.nn.parameter import Parameter
-
 # Need for Pi
 import math
-
-#Mypy
+# Mypy
 import typing as ty
+
+from torch import nn
+from torch.nn.parameter import Parameter
+
 
 # Model consists of
 # - backbone
@@ -28,8 +26,10 @@ import typing as ty
 class BadArguments(Exception):
     pass
 
+
 import torch
 import torch.nn.functional as F
+
 
 # Mish as written in darknet speed check
 class darknet_mish(torch.autograd.Function):
@@ -81,12 +81,14 @@ class DarknetMish(nn.Module):
     def forward(self, x):
         return darknet_mish.apply(x)
 
+
 # @torch.jit.script
 class HardMish(nn.Module):
     def __init__(self):
         super().__init__()
+
     def forward(self, x):
-        return (x/2) * torch.clamp(x+2, min=0, max=2)
+        return (x / 2) * torch.clamp(x + 2, min=0, max=2)
 
 
 # Taken from https://github.com/lessw2020/mish
@@ -141,6 +143,7 @@ class DropBlock2D(nn.Module):
         # print("After: ", torch.isnan(input * mask * mask.numel() /mask.sum()).sum())
         return input * mask * mask.numel() / mask.sum()
 
+
 class SAM(nn.Module):
     def __init__(self, in_channels):
         super().__init__()
@@ -151,10 +154,12 @@ class SAM(nn.Module):
         attention = torch.sigmoid(spatial_features)
         return attention.expand_as(x) * x
 
-#Got and modified from https://arxiv.org/pdf/2003.13630.pdf
+
+# Got and modified from https://arxiv.org/pdf/2003.13630.pdf
 class FastGlobalAvgPool2d():
     def __init__(self, flatten=False):
         self.flatten = flatten
+
     def __call__(self, x):
         if self.flatten:
             in_size = x.size()
@@ -162,7 +167,8 @@ class FastGlobalAvgPool2d():
         else:
             return x.view(x.size(0), x.size(1), -1).mean(-1).view(x.size(0), x.size(1), 1, 1)
 
-#As an example was taken https://github.com/BangguWu/ECANet/blob/master/models/eca_module.py
+
+# As an example was taken https://github.com/BangguWu/ECANet/blob/master/models/eca_module.py
 class ECA(nn.Module):
     def __init__(self, k_size=3):
         super().__init__()
@@ -176,23 +182,24 @@ class ECA(nn.Module):
         return attention.expand_as(x) * x
 
 
-#Taken from https://github.com/joe-siyuan-qiao/WeightStandardization modified with new std https://github.com/joe-siyuan-qiao/WeightStandardization/issues/1#issuecomment-528050344
+# Taken from https://github.com/joe-siyuan-qiao/WeightStandardization modified with new std https://github.com/joe-siyuan-qiao/WeightStandardization/issues/1#issuecomment-528050344
 class Conv2dWS(nn.Conv2d):
     def __init__(self, in_channels, out_channels, kernel_size, stride=1,
                  padding=0, dilation=1, groups=1, bias=True):
         super(Conv2dWS, self).__init__(in_channels, out_channels, kernel_size, stride,
-                 padding, dilation, groups, bias)
+                                       padding, dilation, groups, bias)
 
     def forward(self, x):
         # print("IN: ", (~torch.isfinite(x)).sum())
         weight = self.weight
         weight_mean = weight.mean(dim=1, keepdim=True).mean(dim=2,
-                                  keepdim=True).mean(dim=3, keepdim=True)
+                                                            keepdim=True).mean(dim=3, keepdim=True)
         weight = weight - weight_mean
         std = torch.sqrt(torch.var(weight.view(weight.size(0), -1), dim=1) + 2e-5).view(-1, 1, 1, 1) + 1e-5
         weight = weight / std.expand_as(weight)
         return F.conv2d(x, weight, self.bias, self.stride,
                         self.padding, self.dilation, self.groups)
+
 
 # From https://arxiv.org/pdf/2003.10152.pdf and https://github.com/Wizaron/coord-conv-pytorch/blob/master/coord_conv.py
 class AddCoordChannels(nn.Module):
@@ -204,7 +211,7 @@ class AddCoordChannels(nn.Module):
         self.y_coords = 2.0 * torch.arange(h).unsqueeze(1).expand(h, w) / (h - 1.0) - 1.0
         self.x_coords = 2.0 * torch.arange(w).unsqueeze(0).expand(h, w) / (w - 1.0) - 1.0
         self.coords = torch.stack((self.x_coords, self.y_coords), dim=0)
-        self.coords = torch.unsqueeze(self.coords, dim=0).repeat(b, 1, 1, 1)        
+        self.coords = torch.unsqueeze(self.coords, dim=0).repeat(b, 1, 1, 1)
 
     def forward(self, x):
         b, c, h, w = x.shape
@@ -219,7 +226,8 @@ class AddCoordChannels(nn.Module):
 
         return torch.cat((x, self.coords.to(x.device)), dim=1)
 
-#Was taken from https://github.com/joe-siyuan-qiao/Batch-Channel-Normalization     
+
+# Was taken from https://github.com/joe-siyuan-qiao/Batch-Channel-Normalization
 class BCNorm(nn.Module):
     def __init__(self, num_channels, num_groups=1, eps=1e-05, estimate=False):
         super(BCNorm, self).__init__()
@@ -241,6 +249,7 @@ class BCNorm(nn.Module):
         out = self.weight * out + self.bias
         out = out.view_as(inp)
         return out
+
 
 class EstBN(nn.Module):
 
@@ -271,21 +280,23 @@ class EstBN(nn.Module):
         out = weight * out + bias
         return out
 
+
 # Taken and modified from https://github.com/Tianxiaomo/pytorch-YOLOv4/blob/master/models.py
 class ConvBlock(nn.Module):
-    def __init__(self, in_channels, out_channels, kernel_size, stride, activation, bn=True, bias=False, dropblock=False, sam=False, eca=False, ws=False, coord=False, hard_mish=False, bcn=False, mbn=False):
+    def __init__(self, in_channels, out_channels, kernel_size, stride, activation, bn=True, bias=False, dropblock=False,
+                 sam=False, eca=False, ws=False, coord=False, hard_mish=False, bcn=False, mbn=False):
         super().__init__()
 
         # PADDING is (ks-1)/2
         padding = (kernel_size - 1) // 2
 
         modules: ty.List[ty.Union[nn.Module]] = []
-        #Adding two more to input channels if coord
+        # Adding two more to input channels if coord
         if coord:
             in_channels += 2
             modules.append(AddCoordChannels())
         if ws:
-            modules.append(Conv2dWS(in_channels, out_channels, kernel_size, stride, padding, bias=bias))            
+            modules.append(Conv2dWS(in_channels, out_channels, kernel_size, stride, padding, bias=bias))
         else:
             modules.append(nn.Conv2d(in_channels, out_channels, kernel_size, stride, padding, bias=bias))
         if bn:
@@ -294,7 +305,8 @@ class ConvBlock(nn.Module):
             elif mbn:
                 modules.append(EstBN(out_channels))
             else:
-                modules.append(nn.BatchNorm2d(out_channels, track_running_stats=not ws)) #IF WE ARE NOT USING track running stats and using WS, it just explodes.
+                modules.append(nn.BatchNorm2d(out_channels,
+                                              track_running_stats=not ws))  # IF WE ARE NOT USING track running stats and using WS, it just explodes.
         if activation == "mish":
             if hard_mish:
                 modules.append(HardMish())
@@ -335,15 +347,21 @@ class ResBlock(nn.Module):
         nblocks (int): number of residual blocks.
         shortcut (bool): if True, residual tensor addition is enabled.
     """
+
     # Creating few conv blocks. One with kernel 3, second with kernel 1. With residual skip connection
-    def __init__(self, ch, nblocks=1, shortcut=True, dropblock=True, sam=False, eca=False, ws=False, coord=False, hard_mish=False, bcn=False, mbn=False):
+    def __init__(self, ch, nblocks=1, shortcut=True, dropblock=True, sam=False, eca=False, ws=False, coord=False,
+                 hard_mish=False, bcn=False, mbn=False):
         super().__init__()
         self.shortcut = shortcut
         self.module_list = nn.ModuleList()
         for i in range(nblocks):
             resblock_one = nn.ModuleList()
-            resblock_one.append(ConvBlock(ch, ch, 1, 1, 'mish', dropblock=dropblock, sam=sam, eca=eca, ws=ws, coord=False, hard_mish=hard_mish, bcn=bcn, mbn=mbn))
-            resblock_one.append(ConvBlock(ch, ch, 3, 1, 'mish', dropblock=dropblock, sam=sam, eca=eca, ws=ws, coord=coord, hard_mish=hard_mish, bcn=bcn, mbn=mbn))
+            resblock_one.append(
+                ConvBlock(ch, ch, 1, 1, 'mish', dropblock=dropblock, sam=sam, eca=eca, ws=ws, coord=False,
+                          hard_mish=hard_mish, bcn=bcn, mbn=mbn))
+            resblock_one.append(
+                ConvBlock(ch, ch, 3, 1, 'mish', dropblock=dropblock, sam=sam, eca=eca, ws=ws, coord=coord,
+                          hard_mish=hard_mish, bcn=bcn, mbn=mbn))
             self.module_list.append(resblock_one)
 
         if dropblock:
@@ -371,20 +389,30 @@ class DownSampleFirst(nn.Module):
     Args:
         in_channels (int): Amount of channels to input, if you use RGB, it should be 3
     """
-    def __init__(self, in_channels=3, dropblock=True, sam=False, eca=False, ws=False, coord=False, hard_mish=False, bcn=False, mbn=False):
+
+    def __init__(self, in_channels=3, dropblock=True, sam=False, eca=False, ws=False, coord=False, hard_mish=False,
+                 bcn=False, mbn=False):
         super().__init__()
 
-        self.c1 = ConvBlock(in_channels, 32, 3, 1, "mish", dropblock=dropblock, sam=sam, eca=eca, ws=ws, coord=coord, hard_mish=hard_mish, bcn=bcn, mbn=mbn)
-        self.c2 = ConvBlock(32, 64, 3, 2, "mish", dropblock=dropblock, sam=sam, eca=eca, ws=ws, coord=coord, hard_mish=hard_mish, bcn=bcn, mbn=mbn)
-        self.c3 = ConvBlock(64, 64, 1, 1, "mish", dropblock=dropblock, sam=sam, eca=eca, ws=ws, coord=False, hard_mish=hard_mish, bcn=bcn, mbn=mbn)
-        self.c4 = ConvBlock(64, 32, 1, 1, "mish", dropblock=dropblock, sam=sam, eca=eca, ws=ws, coord=False, hard_mish=hard_mish, bcn=bcn, mbn=mbn)
-        self.c5 = ConvBlock(32, 64, 3, 1, "mish", dropblock=dropblock, sam=sam, eca=eca, ws=ws, coord=coord, hard_mish=hard_mish, bcn=bcn, mbn=mbn)
-        self.c6 = ConvBlock(64, 64, 1, 1, "mish", dropblock=dropblock, sam=sam, eca=eca, ws=ws, coord=False, hard_mish=hard_mish, bcn=bcn, mbn=mbn)
+        self.c1 = ConvBlock(in_channels, 32, 3, 1, "mish", dropblock=dropblock, sam=sam, eca=eca, ws=ws, coord=coord,
+                            hard_mish=hard_mish, bcn=bcn, mbn=mbn)
+        self.c2 = ConvBlock(32, 64, 3, 2, "mish", dropblock=dropblock, sam=sam, eca=eca, ws=ws, coord=coord,
+                            hard_mish=hard_mish, bcn=bcn, mbn=mbn)
+        self.c3 = ConvBlock(64, 64, 1, 1, "mish", dropblock=dropblock, sam=sam, eca=eca, ws=ws, coord=False,
+                            hard_mish=hard_mish, bcn=bcn, mbn=mbn)
+        self.c4 = ConvBlock(64, 32, 1, 1, "mish", dropblock=dropblock, sam=sam, eca=eca, ws=ws, coord=False,
+                            hard_mish=hard_mish, bcn=bcn, mbn=mbn)
+        self.c5 = ConvBlock(32, 64, 3, 1, "mish", dropblock=dropblock, sam=sam, eca=eca, ws=ws, coord=coord,
+                            hard_mish=hard_mish, bcn=bcn, mbn=mbn)
+        self.c6 = ConvBlock(64, 64, 1, 1, "mish", dropblock=dropblock, sam=sam, eca=eca, ws=ws, coord=False,
+                            hard_mish=hard_mish, bcn=bcn, mbn=mbn)
 
         # CSP Layer
-        self.dense_c3_c6 = ConvBlock(64, 64, 1, 1, "mish", dropblock=dropblock, sam=sam, eca=eca, ws=ws, coord=False, hard_mish=hard_mish)
+        self.dense_c3_c6 = ConvBlock(64, 64, 1, 1, "mish", dropblock=dropblock, sam=sam, eca=eca, ws=ws, coord=False,
+                                     hard_mish=hard_mish)
 
-        self.c7 = ConvBlock(128, 64, 1, 1, "mish", dropblock=dropblock, sam=sam, eca=eca, ws=ws, coord=False, hard_mish=hard_mish)
+        self.c7 = ConvBlock(128, 64, 1, 1, "mish", dropblock=dropblock, sam=sam, eca=eca, ws=ws, coord=False,
+                            hard_mish=hard_mish)
 
     def forward(self, x):
         x1 = self.c1(x)
@@ -392,7 +420,7 @@ class DownSampleFirst(nn.Module):
         x3 = self.c3(x2)
         x4 = self.c4(x3)
         x5 = self.c5(x4)
-        x5 = x5 + x3    # Residual block
+        x5 = x5 + x3  # Residual block
         x6 = self.c6(x5)
         xd6 = self.dense_c3_c6(x2)  # CSP
         x6 = torch.cat([x6, xd6], dim=1)
@@ -401,18 +429,25 @@ class DownSampleFirst(nn.Module):
 
 
 class DownSampleBlock(nn.Module):
-    def __init__(self, in_c, out_c, nblocks=2, dropblock=True, sam=False, eca=False, ws=False, coord=False, hard_mish=False, bcn=False, mbn=False):
+    def __init__(self, in_c, out_c, nblocks=2, dropblock=True, sam=False, eca=False, ws=False, coord=False,
+                 hard_mish=False, bcn=False, mbn=False):
         super().__init__()
 
-        self.c1 = ConvBlock(in_c, out_c, 3, 2, "mish", dropblock=dropblock, sam=sam, eca=eca, ws=ws, coord=coord, hard_mish=hard_mish, bcn=bcn, mbn=mbn)
-        self.c2 = ConvBlock(out_c, in_c, 1, 1, "mish", dropblock=dropblock, sam=sam, eca=eca, ws=ws, coord=False, hard_mish=hard_mish, bcn=bcn, mbn=mbn)
-        self.r3 = ResBlock(in_c, nblocks=nblocks, dropblock=dropblock, sam=sam, eca=eca, ws=ws, coord=coord, hard_mish=hard_mish, bcn=bcn, mbn=mbn)
-        self.c4 = ConvBlock(in_c, in_c, 1, 1, "mish", dropblock=dropblock, sam=sam, eca=eca, ws=ws, coord=False, hard_mish=hard_mish, bcn=bcn, mbn=mbn)
+        self.c1 = ConvBlock(in_c, out_c, 3, 2, "mish", dropblock=dropblock, sam=sam, eca=eca, ws=ws, coord=coord,
+                            hard_mish=hard_mish, bcn=bcn, mbn=mbn)
+        self.c2 = ConvBlock(out_c, in_c, 1, 1, "mish", dropblock=dropblock, sam=sam, eca=eca, ws=ws, coord=False,
+                            hard_mish=hard_mish, bcn=bcn, mbn=mbn)
+        self.r3 = ResBlock(in_c, nblocks=nblocks, dropblock=dropblock, sam=sam, eca=eca, ws=ws, coord=coord,
+                           hard_mish=hard_mish, bcn=bcn, mbn=mbn)
+        self.c4 = ConvBlock(in_c, in_c, 1, 1, "mish", dropblock=dropblock, sam=sam, eca=eca, ws=ws, coord=False,
+                            hard_mish=hard_mish, bcn=bcn, mbn=mbn)
 
         # CSP Layer
-        self.dense_c2_c4 = ConvBlock(out_c, in_c, 1, 1, "mish", dropblock=dropblock, sam=sam, eca=eca, ws=ws, coord=False, hard_mish=hard_mish, bcn=bcn, mbn=mbn)
+        self.dense_c2_c4 = ConvBlock(out_c, in_c, 1, 1, "mish", dropblock=dropblock, sam=sam, eca=eca, ws=ws,
+                                     coord=False, hard_mish=hard_mish, bcn=bcn, mbn=mbn)
 
-        self.c5 = ConvBlock(out_c, out_c, 1, 1, "mish", dropblock=dropblock, sam=sam, eca=eca, ws=ws, coord=False, hard_mish=hard_mish, bcn=bcn, mbn=mbn)
+        self.c5 = ConvBlock(out_c, out_c, 1, 1, "mish", dropblock=dropblock, sam=sam, eca=eca, ws=ws, coord=False,
+                            hard_mish=hard_mish, bcn=bcn, mbn=mbn)
 
     def forward(self, x):
         x1 = self.c1(x)
@@ -427,14 +462,20 @@ class DownSampleBlock(nn.Module):
 
 
 class Backbone(nn.Module):
-    def __init__(self, in_channels, dropblock=True, sam=False, eca=False, ws=False, coord=False, hard_mish=False, bcn=False, mbn=False):
+    def __init__(self, in_channels, dropblock=True, sam=False, eca=False, ws=False, coord=False, hard_mish=False,
+                 bcn=False, mbn=False):
         super().__init__()
 
-        self.d1 = DownSampleFirst(in_channels=in_channels, dropblock=dropblock, sam=sam, eca=eca, ws=ws, coord=coord, hard_mish=hard_mish, bcn=bcn, mbn=mbn)
-        self.d2 = DownSampleBlock(64, 128, nblocks=2, dropblock=dropblock, sam=sam, eca=eca, ws=ws, coord=coord, hard_mish=hard_mish, bcn=bcn, mbn=mbn)
-        self.d3 = DownSampleBlock(128, 256, nblocks=8, dropblock=dropblock, sam=sam, eca=eca, ws=ws, coord=coord, hard_mish=hard_mish, bcn=bcn, mbn=mbn)
-        self.d4 = DownSampleBlock(256, 512, nblocks=8, dropblock=dropblock, sam=sam, eca=eca, ws=ws, coord=coord, hard_mish=hard_mish, bcn=bcn, mbn=mbn)
-        self.d5 = DownSampleBlock(512, 1024, nblocks=4, dropblock=dropblock, sam=sam, eca=eca, ws=ws, coord=coord, hard_mish=hard_mish, bcn=bcn, mbn=mbn)
+        self.d1 = DownSampleFirst(in_channels=in_channels, dropblock=dropblock, sam=sam, eca=eca, ws=ws, coord=coord,
+                                  hard_mish=hard_mish, bcn=bcn, mbn=mbn)
+        self.d2 = DownSampleBlock(64, 128, nblocks=2, dropblock=dropblock, sam=sam, eca=eca, ws=ws, coord=coord,
+                                  hard_mish=hard_mish, bcn=bcn, mbn=mbn)
+        self.d3 = DownSampleBlock(128, 256, nblocks=8, dropblock=dropblock, sam=sam, eca=eca, ws=ws, coord=coord,
+                                  hard_mish=hard_mish, bcn=bcn, mbn=mbn)
+        self.d4 = DownSampleBlock(256, 512, nblocks=8, dropblock=dropblock, sam=sam, eca=eca, ws=ws, coord=coord,
+                                  hard_mish=hard_mish, bcn=bcn, mbn=mbn)
+        self.d5 = DownSampleBlock(512, 1024, nblocks=4, dropblock=dropblock, sam=sam, eca=eca, ws=ws, coord=coord,
+                                  hard_mish=hard_mish, bcn=bcn, mbn=mbn)
 
     def forward(self, x):
         x1 = self.d1(x)
@@ -446,22 +487,30 @@ class Backbone(nn.Module):
 
 
 class PAN_Layer(nn.Module):
-    def __init__(self, in_channels, dropblock=True, sam=False, eca=False, ws=False, coord=False, hard_mish=False, bcn=False, mbn=False):
+    def __init__(self, in_channels, dropblock=True, sam=False, eca=False, ws=False, coord=False, hard_mish=False,
+                 bcn=False, mbn=False):
         super().__init__()
 
         in_c = in_channels
         out_c = in_c // 2
 
-        self.c1 = ConvBlock(in_c, out_c, 1, 1, "leaky", dropblock=dropblock, sam=sam, eca=eca, ws=ws, coord=False, hard_mish=hard_mish, bcn=bcn, mbn=mbn)
+        self.c1 = ConvBlock(in_c, out_c, 1, 1, "leaky", dropblock=dropblock, sam=sam, eca=eca, ws=ws, coord=False,
+                            hard_mish=hard_mish, bcn=bcn, mbn=mbn)
         self.u2 = nn.Upsample(scale_factor=2, mode="nearest")
         # Gets input from d4
-        self.c2_from_upsampled = ConvBlock(in_c, out_c, 1, 1, "leaky", dropblock=False, sam=sam, eca=eca, ws=ws, coord=False, hard_mish=hard_mish, bcn=bcn, mbn=mbn)
+        self.c2_from_upsampled = ConvBlock(in_c, out_c, 1, 1, "leaky", dropblock=False, sam=sam, eca=eca, ws=ws,
+                                           coord=False, hard_mish=hard_mish, bcn=bcn, mbn=mbn)
         # We use stack in PAN, so 512
-        self.c3 = ConvBlock(in_c, out_c, 1, 1, "leaky", dropblock=False, sam=sam, eca=eca, ws=ws, coord=False, hard_mish=hard_mish, bcn=bcn, mbn=mbn)
-        self.c4 = ConvBlock(out_c, in_c, 3, 1, "leaky", dropblock=dropblock, sam=sam, eca=eca, ws=ws, coord=coord, hard_mish=hard_mish, bcn=bcn, mbn=mbn)
-        self.c5 = ConvBlock(in_c, out_c, 1, 1, "leaky", dropblock=False, sam=sam, eca=eca, ws=ws, coord=False, hard_mish=hard_mish, bcn=bcn, mbn=mbn)
-        self.c6 = ConvBlock(out_c, in_c, 3, 1, "leaky", dropblock=False, sam=sam, eca=eca, ws=ws, coord=coord, hard_mish=hard_mish, bcn=bcn, mbn=mbn)
-        self.c7 = ConvBlock(in_c, out_c, 1, 1, "leaky", dropblock=False, sam=sam, eca=eca, ws=ws, coord=False, hard_mish=hard_mish, bcn=bcn, mbn=mbn)
+        self.c3 = ConvBlock(in_c, out_c, 1, 1, "leaky", dropblock=False, sam=sam, eca=eca, ws=ws, coord=False,
+                            hard_mish=hard_mish, bcn=bcn, mbn=mbn)
+        self.c4 = ConvBlock(out_c, in_c, 3, 1, "leaky", dropblock=dropblock, sam=sam, eca=eca, ws=ws, coord=coord,
+                            hard_mish=hard_mish, bcn=bcn, mbn=mbn)
+        self.c5 = ConvBlock(in_c, out_c, 1, 1, "leaky", dropblock=False, sam=sam, eca=eca, ws=ws, coord=False,
+                            hard_mish=hard_mish, bcn=bcn, mbn=mbn)
+        self.c6 = ConvBlock(out_c, in_c, 3, 1, "leaky", dropblock=False, sam=sam, eca=eca, ws=ws, coord=coord,
+                            hard_mish=hard_mish, bcn=bcn, mbn=mbn)
+        self.c7 = ConvBlock(in_c, out_c, 1, 1, "leaky", dropblock=False, sam=sam, eca=eca, ws=ws, coord=False,
+                            hard_mish=hard_mish, bcn=bcn, mbn=mbn)
 
     def forward(self, x_to_upsample, x_upsampled):
         x1 = self.c1(x_to_upsample)
@@ -476,63 +525,64 @@ class PAN_Layer(nn.Module):
         x7 = self.c7(x6)
         return x7
 
-#Taken and modified from https://github.com/ruinmessi/ASFF/blob/0ff0e3393675583f7da65a7b443ea467e1eaed65/models/network_blocks.py#L267-L330
+
+# Taken and modified from https://github.com/ruinmessi/ASFF/blob/0ff0e3393675583f7da65a7b443ea467e1eaed65/models
+# /network_blocks.py#L267-L330
 class ASFF(nn.Module):
     def __init__(self, level, rfb=False, vis=False, bcn=False, mbn=False):
         super(ASFF, self).__init__()
         self.level = level
         self.dim = [512, 256, 128]
         self.inter_dim = self.dim[self.level]
-        if level==0:
+        if level == 0:
             self.stride_level_1 = ConvBlock(256, self.inter_dim, 3, 2, "leaky", bcn=bcn, mbn=mbn)
             self.stride_level_2 = ConvBlock(128, self.inter_dim, 3, 2, "leaky", bcn=bcn, mbn=mbn)
             self.expand = ConvBlock(self.inter_dim, 512, 3, 1, "leaky", bcn=bcn, mbn=mbn)
-        elif level==1:
+        elif level == 1:
             self.compress_level_0 = ConvBlock(512, self.inter_dim, 1, 1, "leaky", bcn=bcn, mbn=mbn)
             self.stride_level_2 = ConvBlock(128, self.inter_dim, 3, 2, "leaky", bcn=bcn, mbn=mbn)
             self.expand = ConvBlock(self.inter_dim, 256, 3, 1, "leaky", bcn=bcn, mbn=mbn)
-        elif level==2:
+        elif level == 2:
             self.compress_level_0 = ConvBlock(512, self.inter_dim, 1, 1, "leaky", bcn=bcn, mbn=mbn)
             self.compress_level_1 = ConvBlock(256, self.inter_dim, 1, 1, "leaky", bcn=bcn, mbn=mbn)
             self.expand = ConvBlock(self.inter_dim, 128, 3, 1, "leaky", bcn=bcn, mbn=mbn)
 
-        compress_c = 8 if rfb else 16  #when adding rfb, we use half number of channels to save memory
+        compress_c = 8 if rfb else 16  # when adding rfb, we use half number of channels to save memory
         self.weight_level_0 = ConvBlock(self.inter_dim, compress_c, 1, 1, "leaky", bcn=bcn, mbn=mbn)
         self.weight_level_1 = ConvBlock(self.inter_dim, compress_c, 1, 1, "leaky", bcn=bcn, mbn=mbn)
         self.weight_level_2 = ConvBlock(self.inter_dim, compress_c, 1, 1, "leaky", bcn=bcn, mbn=mbn)
-        self.weight_levels = nn.Conv2d(compress_c*3, 3, kernel_size=1, stride=1, padding=0)
-    
-        self.vis= vis
+        self.weight_levels = nn.Conv2d(compress_c * 3, 3, kernel_size=1, stride=1, padding=0)
 
+        self.vis = vis
 
     def forward(self, x_level_0, x_level_1, x_level_2):
-        if self.level==0:
-            level_0_resized = x_level_0 # 512 -> 512
-            level_1_resized = self.stride_level_1(x_level_1) # 256 -> 512
-            level_2_downsampled_inter =F.max_pool2d(x_level_2, 3, stride=2, padding=1)
-            level_2_resized = self.stride_level_2(level_2_downsampled_inter) # 128 -> 512
-        elif self.level==1:
-            level_0_compressed = self.compress_level_0(x_level_0) # 512 -> 256
-            level_0_resized =F.interpolate(level_0_compressed, scale_factor=2, mode='nearest')
-            level_1_resized =x_level_1 # 256 -> 256
-            level_2_resized =self.stride_level_2(x_level_2) # 128 -> 256
-        elif self.level==2:
-            level_0_compressed = self.compress_level_0(x_level_0) # 512 -> 128
-            level_1_compressed = self.compress_level_1(x_level_1) # 256 -> 128
-            level_0_resized =F.interpolate(level_0_compressed, scale_factor=4, mode='nearest')
-            level_1_resized =F.interpolate(level_1_compressed, scale_factor=2, mode='nearest')
-            level_2_resized =x_level_2 #128 -> 128
+        if self.level == 0:
+            level_0_resized = x_level_0  # 512 -> 512
+            level_1_resized = self.stride_level_1(x_level_1)  # 256 -> 512
+            level_2_downsampled_inter = F.max_pool2d(x_level_2, 3, stride=2, padding=1)
+            level_2_resized = self.stride_level_2(level_2_downsampled_inter)  # 128 -> 512
+        elif self.level == 1:
+            level_0_compressed = self.compress_level_0(x_level_0)  # 512 -> 256
+            level_0_resized = F.interpolate(level_0_compressed, scale_factor=2, mode='nearest')
+            level_1_resized = x_level_1  # 256 -> 256
+            level_2_resized = self.stride_level_2(x_level_2)  # 128 -> 256
+        elif self.level == 2:
+            level_0_compressed = self.compress_level_0(x_level_0)  # 512 -> 128
+            level_1_compressed = self.compress_level_1(x_level_1)  # 256 -> 128
+            level_0_resized = F.interpolate(level_0_compressed, scale_factor=4, mode='nearest')
+            level_1_resized = F.interpolate(level_1_compressed, scale_factor=2, mode='nearest')
+            level_2_resized = x_level_2  # 128 -> 128
 
         level_0_weight_v = self.weight_level_0(level_0_resized)
         level_1_weight_v = self.weight_level_1(level_1_resized)
         level_2_weight_v = self.weight_level_2(level_2_resized)
-        levels_weight_v = torch.cat((level_0_weight_v, level_1_weight_v, level_2_weight_v),1)
+        levels_weight_v = torch.cat((level_0_weight_v, level_1_weight_v, level_2_weight_v), 1)
         levels_weight = self.weight_levels(levels_weight_v)
         levels_weight = F.softmax(levels_weight, dim=1)
 
-        fused_out_reduced = level_0_resized * levels_weight[:,0:1,:,:]+\
-                            level_1_resized * levels_weight[:,1:2,:,:]+\
-                            level_2_resized * levels_weight[:,2:,:,:]
+        fused_out_reduced = level_0_resized * levels_weight[:, 0:1, :, :] + \
+                            level_1_resized * levels_weight[:, 1:2, :, :] + \
+                            level_2_resized * levels_weight[:, 2:, :, :]
 
         out = self.expand(fused_out_reduced)
 
@@ -541,68 +591,69 @@ class ASFF(nn.Module):
         else:
             return out
 
-#Author: Vadims Casecnikovs creator of this repository
+
+# Author: Vadims Casecnikovs creator of this repository
 class ACFF(nn.Module):
     def __init__(self, level, rfb=False, vis=False, bcn=False, mbn=False):
         super(ACFF, self).__init__()
         self.level = level
         self.dim = [512, 256, 128]
         self.inter_dim = self.dim[self.level]
-        if level==0:
+        if level == 0:
             self.stride_level_1 = ConvBlock(256, self.inter_dim, 3, 2, "leaky", bcn=bcn, mbn=mbn)
             self.stride_level_2 = ConvBlock(128, self.inter_dim, 3, 2, "leaky", bcn=bcn, mbn=mbn)
             self.expand = ConvBlock(self.inter_dim, 512, 3, 1, "leaky", bcn=bcn, mbn=mbn)
-        elif level==1:
+        elif level == 1:
             self.compress_level_0 = ConvBlock(512, self.inter_dim, 1, 1, "leaky", bcn=bcn, mbn=mbn)
             self.stride_level_2 = ConvBlock(128, self.inter_dim, 3, 2, "leaky", bcn=bcn, mbn=mbn)
             self.expand = ConvBlock(self.inter_dim, 256, 3, 1, "leaky", bcn=bcn, mbn=mbn)
-        elif level==2:
+        elif level == 2:
             self.compress_level_0 = ConvBlock(512, self.inter_dim, 1, 1, "leaky", bcn=bcn, mbn=mbn)
             self.compress_level_1 = ConvBlock(256, self.inter_dim, 1, 1, "leaky", bcn=bcn, mbn=mbn)
             self.expand = ConvBlock(self.inter_dim, 128, 3, 1, "leaky", bcn=bcn, mbn=mbn)
 
         self.avg_pool = FastGlobalAvgPool2d()
         self.weights_spatial = torch.nn.Parameter(torch.ones((3, self.inter_dim, 3)))
-        self.weights_spatial = torch.nn.init.kaiming_uniform_(self.weights_spatial, a=0, mode='fan_in', nonlinearity='relu')
+        self.weights_spatial = torch.nn.init.kaiming_uniform_(self.weights_spatial, a=0, mode='fan_in',
+                                                              nonlinearity='relu')
 
-        self.vis= vis
-
+        self.vis = vis
 
     def forward(self, x_level_0, x_level_1, x_level_2):
-        #In this part we are trying to construct the same channel features as in target level
-        if self.level==0:
-            level_0_resized = x_level_0 # 512 -> 512
-            level_1_resized = self.stride_level_1(x_level_1) # 256 -> 512
-            level_2_downsampled_inter =F.max_pool2d(x_level_2, 3, stride=2, padding=1)
-            level_2_resized = self.stride_level_2(level_2_downsampled_inter) # 128 -> 512
-        elif self.level==1: 
-            level_0_compressed = self.compress_level_0(x_level_0) # 512 -> 256
-            level_0_resized =F.interpolate(level_0_compressed, scale_factor=2, mode='nearest')
-            level_1_resized =x_level_1 # 256 -> 256
-            level_2_resized =self.stride_level_2(x_level_2) # 128 -> 256
-        elif self.level==2:
-            level_0_compressed = self.compress_level_0(x_level_0) # 512 -> 128
-            level_1_compressed = self.compress_level_1(x_level_1) # 256 -> 128
-            level_0_resized =F.interpolate(level_0_compressed, scale_factor=4, mode='nearest')
-            level_1_resized =F.interpolate(level_1_compressed, scale_factor=2, mode='nearest')
-            level_2_resized =x_level_2 #128 -> 128
+        # In this part we are trying to construct the same channel features as in target level
+        if self.level == 0:
+            level_0_resized = x_level_0  # 512 -> 512
+            level_1_resized = self.stride_level_1(x_level_1)  # 256 -> 512
+            level_2_downsampled_inter = F.max_pool2d(x_level_2, 3, stride=2, padding=1)
+            level_2_resized = self.stride_level_2(level_2_downsampled_inter)  # 128 -> 512
+        elif self.level == 1:
+            level_0_compressed = self.compress_level_0(x_level_0)  # 512 -> 256
+            level_0_resized = F.interpolate(level_0_compressed, scale_factor=2, mode='nearest')
+            level_1_resized = x_level_1  # 256 -> 256
+            level_2_resized = self.stride_level_2(x_level_2)  # 128 -> 256
+        elif self.level == 2:
+            level_0_compressed = self.compress_level_0(x_level_0)  # 512 -> 128
+            level_1_compressed = self.compress_level_1(x_level_1)  # 256 -> 128
+            level_0_resized = F.interpolate(level_0_compressed, scale_factor=4, mode='nearest')
+            level_1_resized = F.interpolate(level_1_compressed, scale_factor=2, mode='nearest')
+            level_2_resized = x_level_2  # 128 -> 128
 
-        #In this part we are getting mean value of channel's(featuremaps) activations
+        # In this part we are getting mean value of channel's(featuremaps) activations
         level_0_flattened = self.avg_pool(level_0_resized)
         level_1_flattened = self.avg_pool(level_1_resized)
         level_2_flattened = self.avg_pool(level_2_resized)
 
-        #Concatenating all 3 levels, getting (B, C, L)        
+        # Concatenating all 3 levels, getting (B, C, L)
         levels_weight = torch.cat([level_0_flattened, level_1_flattened, level_2_flattened], dim=2).squeeze(-1)
 
-        #For each channel, getting 3 values, they would show how much attention should we give for each level's channel
+        # For each channel, getting 3 values, they would show how much attention should we give for each level's channel
         level_weight = torch.einsum("bci, kci-> bck", levels_weight, self.weights_spatial)
 
         levels_weight = torch.nn.functional.softmax(levels_weight, dim=2).unsqueeze(-1)
 
-        fused_out_reduced = level_0_resized * levels_weight[:,:,0:1,:]+\
-                            level_1_resized * levels_weight[:,:,1:2,:]+\
-                            level_2_resized * levels_weight[:,:,2:,:]
+        fused_out_reduced = level_0_resized * levels_weight[:, :, 0:1, :] + \
+                            level_1_resized * levels_weight[:, :, 1:2, :] + \
+                            level_2_resized * levels_weight[:, :, 2:, :]
 
         out = self.expand(fused_out_reduced)
 
@@ -612,31 +663,39 @@ class ACFF(nn.Module):
             return out
 
 
-
 class Neck(nn.Module):
-    def __init__(self, spp_kernels=(5, 9, 13), PAN_layers=[512, 256], dropblock=True, sam=False, eca=False, ws=False, coord=False, hard_mish=False, asff=False, acff=False, bcn=False, mbn=False):
+    def __init__(self, spp_kernels=(5, 9, 13), PAN_layers=[512, 256], dropblock=True, sam=False, eca=False, ws=False,
+                 coord=False, hard_mish=False, asff=False, acff=False, bcn=False, mbn=False):
         super().__init__()
-        assert not(asff and acff)
+        assert not (asff and acff)
         self.asff = asff
         self.acff = acff
 
-        self.c1 = ConvBlock(1024, 512, 1, 1, "leaky", dropblock=False, sam=sam, eca=eca, ws=ws, coord=False, hard_mish=hard_mish, bcn=bcn, mbn=mbn)
-        self.c2 = ConvBlock(512, 1024, 3, 1, "leaky", dropblock=False, sam=sam, eca=eca, ws=ws, coord=coord, hard_mish=hard_mish, bcn=bcn, mbn=mbn)
-        self.c3 = ConvBlock(1024, 512, 1, 1, "leaky", dropblock=False, sam=sam, eca=eca, ws=ws, coord=False, hard_mish=hard_mish, bcn=bcn, mbn=mbn)
+        self.c1 = ConvBlock(1024, 512, 1, 1, "leaky", dropblock=False, sam=sam, eca=eca, ws=ws, coord=False,
+                            hard_mish=hard_mish, bcn=bcn, mbn=mbn)
+        self.c2 = ConvBlock(512, 1024, 3, 1, "leaky", dropblock=False, sam=sam, eca=eca, ws=ws, coord=coord,
+                            hard_mish=hard_mish, bcn=bcn, mbn=mbn)
+        self.c3 = ConvBlock(1024, 512, 1, 1, "leaky", dropblock=False, sam=sam, eca=eca, ws=ws, coord=False,
+                            hard_mish=hard_mish, bcn=bcn, mbn=mbn)
 
         # SPP block
         self.mp4_1 = nn.MaxPool2d(kernel_size=spp_kernels[0], stride=1, padding=spp_kernels[0] // 2)
         self.mp4_2 = nn.MaxPool2d(kernel_size=spp_kernels[1], stride=1, padding=spp_kernels[1] // 2)
         self.mp4_3 = nn.MaxPool2d(kernel_size=spp_kernels[2], stride=1, padding=spp_kernels[2] // 2)
 
-        self.c5 = ConvBlock(2048, 512, 1, 1, "leaky", dropblock=False, sam=sam, eca=eca, ws=ws, coord=False, hard_mish=hard_mish, bcn=bcn, mbn=mbn)
-        self.c6 = ConvBlock(512, 1024, 3, 1, "leaky", dropblock=dropblock, sam=sam, eca=eca, ws=ws, coord=coord, hard_mish=hard_mish, bcn=bcn, mbn=mbn)
-        self.c7 = ConvBlock(1024, 512, 1, 1, "leaky", dropblock=False, sam=sam, eca=eca, ws=ws, coord=False, hard_mish=hard_mish, bcn=bcn, mbn=mbn)
+        self.c5 = ConvBlock(2048, 512, 1, 1, "leaky", dropblock=False, sam=sam, eca=eca, ws=ws, coord=False,
+                            hard_mish=hard_mish, bcn=bcn, mbn=mbn)
+        self.c6 = ConvBlock(512, 1024, 3, 1, "leaky", dropblock=dropblock, sam=sam, eca=eca, ws=ws, coord=coord,
+                            hard_mish=hard_mish, bcn=bcn, mbn=mbn)
+        self.c7 = ConvBlock(1024, 512, 1, 1, "leaky", dropblock=False, sam=sam, eca=eca, ws=ws, coord=False,
+                            hard_mish=hard_mish, bcn=bcn, mbn=mbn)
 
-        self.PAN8 = PAN_Layer(PAN_layers[0], dropblock=dropblock, sam=sam, eca=eca, ws=ws, coord=coord, hard_mish=hard_mish, bcn=bcn, mbn=mbn)
-        self.PAN9 = PAN_Layer(PAN_layers[1], dropblock=dropblock, sam=sam, eca=eca, ws=ws, coord=coord, hard_mish=hard_mish, bcn=bcn, mbn=mbn)
+        self.PAN8 = PAN_Layer(PAN_layers[0], dropblock=dropblock, sam=sam, eca=eca, ws=ws, coord=coord,
+                              hard_mish=hard_mish, bcn=bcn, mbn=mbn)
+        self.PAN9 = PAN_Layer(PAN_layers[1], dropblock=dropblock, sam=sam, eca=eca, ws=ws, coord=coord,
+                              hard_mish=hard_mish, bcn=bcn, mbn=mbn)
 
-        if asff: # branch inputs biggest objects: 512, medium objects: 256, smallest objects : 128
+        if asff:  # branch inputs biggest objects: 512, medium objects: 256, smallest objects : 128
             self.ASFF_0 = ASFF(0)
             self.ASFF_1 = ASFF(1)
             self.ASFF_2 = ASFF(2)
@@ -677,21 +736,26 @@ class Neck(nn.Module):
             x9ACFF = self.ACFF_2(x7, x8, x9)
             return x9ACFF, x8ACFF, x7ACFF
 
-
         return x9, x8, x7
 
 
-
 class HeadPreprocessing(nn.Module):
-    def __init__(self, in_channels, dropblock=True, sam=False, eca=False, ws=False, coord=False, hard_mish=False, bcn=False, mbn=False):
+    def __init__(self, in_channels, dropblock=True, sam=False, eca=False, ws=False, coord=False, hard_mish=False,
+                 bcn=False, mbn=False):
         super().__init__()
         ic = in_channels
-        self.c1 = ConvBlock(ic, ic*2, 3, 2, 'leaky', dropblock=dropblock, sam=sam, eca=eca, ws=ws, coord=coord, hard_mish=hard_mish, bcn=bcn, mbn=mbn)
-        self.c2 = ConvBlock(ic*4, ic*2, 1, 1, 'leaky', dropblock=dropblock, sam=sam, eca=eca, ws=ws, coord=False, hard_mish=hard_mish, bcn=bcn, mbn=mbn)
-        self.c3 = ConvBlock(ic*2, ic*4, 3, 1, 'leaky', dropblock=dropblock, sam=sam, eca=eca, ws=ws, coord=coord, hard_mish=hard_mish, bcn=bcn, mbn=mbn)
-        self.c4 = ConvBlock(ic*4, ic*2, 1, 1, 'leaky', dropblock=dropblock, sam=sam, eca=eca, ws=ws, coord=False, hard_mish=hard_mish, bcn=bcn, mbn=mbn)
-        self.c5 = ConvBlock(ic*2, ic*4, 3, 1, 'leaky', dropblock=dropblock, sam=sam, eca=eca, ws=ws, coord=coord, hard_mish=hard_mish, bcn=bcn, mbn=mbn)
-        self.c6 = ConvBlock(ic*4, ic*2, 1, 1, 'leaky', dropblock=dropblock, sam=sam, eca=eca, ws=ws, coord=False, hard_mish=hard_mish, bcn=bcn, mbn=mbn)
+        self.c1 = ConvBlock(ic, ic * 2, 3, 2, 'leaky', dropblock=dropblock, sam=sam, eca=eca, ws=ws, coord=coord,
+                            hard_mish=hard_mish, bcn=bcn, mbn=mbn)
+        self.c2 = ConvBlock(ic * 4, ic * 2, 1, 1, 'leaky', dropblock=dropblock, sam=sam, eca=eca, ws=ws, coord=False,
+                            hard_mish=hard_mish, bcn=bcn, mbn=mbn)
+        self.c3 = ConvBlock(ic * 2, ic * 4, 3, 1, 'leaky', dropblock=dropblock, sam=sam, eca=eca, ws=ws, coord=coord,
+                            hard_mish=hard_mish, bcn=bcn, mbn=mbn)
+        self.c4 = ConvBlock(ic * 4, ic * 2, 1, 1, 'leaky', dropblock=dropblock, sam=sam, eca=eca, ws=ws, coord=False,
+                            hard_mish=hard_mish, bcn=bcn, mbn=mbn)
+        self.c5 = ConvBlock(ic * 2, ic * 4, 3, 1, 'leaky', dropblock=dropblock, sam=sam, eca=eca, ws=ws, coord=coord,
+                            hard_mish=hard_mish, bcn=bcn, mbn=mbn)
+        self.c6 = ConvBlock(ic * 4, ic * 2, 1, 1, 'leaky', dropblock=dropblock, sam=sam, eca=eca, ws=ws, coord=False,
+                            hard_mish=hard_mish, bcn=bcn, mbn=mbn)
 
     def forward(self, input, input_prev):
         x1 = self.c1(input_prev)
@@ -706,10 +770,13 @@ class HeadPreprocessing(nn.Module):
 
 
 class HeadOutput(nn.Module):
-    def __init__(self, in_channels, out_channels, dropblock=True, sam=False, eca=False, ws=False, coord=False, hard_mish=False, bcn=False, mbn=False):
+    def __init__(self, in_channels, out_channels, dropblock=True, sam=False, eca=False, ws=False, coord=False,
+                 hard_mish=False, bcn=False, mbn=False):
         super().__init__()
-        self.c1 = ConvBlock(in_channels, in_channels*2, 3, 1, "leaky", dropblock=False, sam=sam, eca=eca, ws=False, coord=coord, hard_mish=hard_mish, bcn=bcn, mbn=mbn)
-        self.c2 = ConvBlock(in_channels*2, out_channels, 1, 1, "linear", bn=False, bias=True, dropblock=False, sam=False, eca=False, ws=False, coord=False, hard_mish=hard_mish, bcn=bcn, mbn=mbn)
+        self.c1 = ConvBlock(in_channels, in_channels * 2, 3, 1, "leaky", dropblock=False, sam=sam, eca=eca, ws=False,
+                            coord=coord, hard_mish=hard_mish, bcn=bcn, mbn=mbn)
+        self.c2 = ConvBlock(in_channels * 2, out_channels, 1, 1, "linear", bn=False, bias=True, dropblock=False,
+                            sam=False, eca=False, ws=False, coord=False, hard_mish=hard_mish, bcn=bcn, mbn=mbn)
 
     def forward(self, x):
         x1 = self.c1(x)
@@ -718,16 +785,22 @@ class HeadOutput(nn.Module):
 
 
 class Head(nn.Module):
-    def __init__(self, output_ch, dropblock=True, sam=False, eca=False, ws=False, coord=False, hard_mish=False, bcn=False, mbn=False):
+    def __init__(self, output_ch, dropblock=True, sam=False, eca=False, ws=False, coord=False, hard_mish=False,
+                 bcn=False, mbn=False):
         super().__init__()
 
-        self.ho1 = HeadOutput(128, output_ch, dropblock=dropblock, sam=sam, eca=eca, ws=ws, coord=coord, hard_mish=hard_mish, bcn=bcn, mbn=mbn)
+        self.ho1 = HeadOutput(128, output_ch, dropblock=dropblock, sam=sam, eca=eca, ws=ws, coord=coord,
+                              hard_mish=hard_mish, bcn=bcn, mbn=mbn)
 
-        self.hp2 = HeadPreprocessing(128, dropblock=dropblock, sam=sam, eca=eca, ws=ws, coord=coord, hard_mish=hard_mish, bcn=bcn, mbn=mbn)
-        self.ho2 = HeadOutput(256, output_ch, dropblock=dropblock, sam=sam, eca=eca, ws=ws, coord=coord, hard_mish=hard_mish, bcn=bcn, mbn=mbn)
+        self.hp2 = HeadPreprocessing(128, dropblock=dropblock, sam=sam, eca=eca, ws=ws, coord=coord,
+                                     hard_mish=hard_mish, bcn=bcn, mbn=mbn)
+        self.ho2 = HeadOutput(256, output_ch, dropblock=dropblock, sam=sam, eca=eca, ws=ws, coord=coord,
+                              hard_mish=hard_mish, bcn=bcn, mbn=mbn)
 
-        self.hp3 = HeadPreprocessing(256, dropblock=dropblock, sam=sam, eca=eca, ws=ws, coord=coord, hard_mish=hard_mish, bcn=bcn, mbn=mbn)
-        self.ho3 = HeadOutput(512, output_ch, dropblock=dropblock, sam=sam, eca=eca, ws=ws, coord=coord, hard_mish=hard_mish, bcn=bcn, mbn=mbn)
+        self.hp3 = HeadPreprocessing(256, dropblock=dropblock, sam=sam, eca=eca, ws=ws, coord=coord,
+                                     hard_mish=hard_mish, bcn=bcn, mbn=mbn)
+        self.ho3 = HeadOutput(512, output_ch, dropblock=dropblock, sam=sam, eca=eca, ws=ws, coord=coord,
+                              hard_mish=hard_mish, bcn=bcn, mbn=mbn)
 
     def forward(self, input):
         input1, input2, input3 = input
@@ -799,7 +872,7 @@ class YOLOLayer(nn.Module):
 
         target_boxes_grid = FloatTensor(nB, nA, nG, nG, 4).fill_(0)
 
-        #If target is zero, then return
+        # If target is zero, then return
         if target.shape[0] == 0:
             tconf = obj_mask.float()
             # print(iou, class_mask, obj_mask, noobj_mask, tx, ty, tw, th, tcls, tconf, target_boxes_grid)
@@ -860,8 +933,7 @@ class YOLOLayer(nn.Module):
         union_area = (w1 * h1 + 1e-16) + w2 * h2 - inter_area
         return inter_area / union_area
 
-
-    def bbox_iou(self, box1, box2, x1y1x2y2=True, get_areas = False):
+    def bbox_iou(self, box1, box2, x1y1x2y2=True, get_areas=False):
         """
         Returns the IoU of two bounding boxes
         """
@@ -881,7 +953,7 @@ class YOLOLayer(nn.Module):
         inter_rect_y1 = torch.max(b1_y1, b2_y1)
         inter_rect_x2 = torch.min(b1_x2, b2_x2)
         inter_rect_y2 = torch.min(b1_y2, b2_y2)
-        
+
         # Intersection area
         inter_area = torch.clamp(inter_rect_x2 - inter_rect_x1, min=0) * torch.clamp(
             inter_rect_y2 - inter_rect_y1, min=0
@@ -891,13 +963,11 @@ class YOLOLayer(nn.Module):
         b2_area = (b2_x2 - b2_x1) * (b2_y2 - b2_y1)
         union_area = (b1_area + b2_area - inter_area + 1e-16)
 
-
         if get_areas:
             return inter_area, union_area
 
         iou = inter_area / union_area
         return iou
-
 
     def smallestenclosing(self, pred_boxes, target_boxes):
         # Calculating smallest enclosing
@@ -911,10 +981,10 @@ class YOLOLayer(nn.Module):
         predwidth = pred_boxes[..., 2]
         predheight = pred_boxes[..., 3]
 
-        xc1 = torch.min(predxc - (predwidth/2), targetxc - (targetwidth/2))
-        yc1 = torch.min(predyc - (predheight/2), targetyc - (targetheight/2))
-        xc2 = torch.max(predxc + (predwidth/2), targetxc + (targetwidth/2))
-        yc2 = torch.max(predyc + (predheight/2), targetyc + (targetheight/2))
+        xc1 = torch.min(predxc - (predwidth / 2), targetxc - (targetwidth / 2))
+        yc1 = torch.min(predyc - (predheight / 2), targetyc - (targetheight / 2))
+        xc2 = torch.max(predxc + (predwidth / 2), targetxc + (targetwidth / 2))
+        yc2 = torch.max(predyc + (predheight / 2), targetyc + (targetheight / 2))
 
         return xc1, yc1, xc2, yc2
 
@@ -928,7 +998,7 @@ class YOLOLayer(nn.Module):
         return y
 
     def iou_all_to_all(self, a, b):
-        #Calculates intersection over union area for each a bounding box with each b bounding box
+        # Calculates intersection over union area for each a bounding box with each b bounding box
         area = (b[:, 2] - b[:, 0]) * (b[:, 3] - b[:, 1])
 
         iw = torch.min(torch.unsqueeze(a[:, 2], dim=1), b[:, 2]) - torch.max(torch.unsqueeze(a[:, 0], 1), b[:, 0])
@@ -947,7 +1017,7 @@ class YOLOLayer(nn.Module):
 
         return IoU
 
-    def smooth_ln(self, x, smooth =0.5):
+    def smooth_ln(self, x, smooth=0.5):
         return torch.where(
             torch.le(x, smooth),
             -torch.log(1 - x),
@@ -971,7 +1041,7 @@ class YOLOLayer(nn.Module):
         RepGTS = []
         RepBoxes = []
         for bn in range(batch_size):
-            #Repulsion between prediction bbox and neighboring target bbox, which are not target for this bounding box. (pred bbox <- -> 2nd/3rd/... by iou target bbox)
+            # Repulsion between prediction bbox and neighboring target bbox, which are not target for this bounding box. (pred bbox <- -> 2nd/3rd/... by iou target bbox)
             pred_bboxes = self.xywh2xyxy(y_hat[bn, :, :4])
             bn_mask = y[:, 0] == bn
             gt_bboxes = self.xywh2xyxy(y[bn_mask, 2:] * 608)
@@ -982,18 +1052,18 @@ class YOLOLayer(nn.Module):
             RepGT = self.smooth_ln(self.iog(second_closest_target, pred_bboxes)).mean()
             RepGTS.append(RepGT)
 
-            #Repulsion between pred bbox and pred bbox, which are not refering to the same target bbox.
+            # Repulsion between pred bbox and pred bbox, which are not refering to the same target bbox.
             have_target_mask = val[:, 0] != 0
             anchors_with_target = pred_bboxes[have_target_mask]
             iou_anchor_to_anchor = self.iou_all_to_all(anchors_with_target, anchors_with_target)
             other_mask = (torch.eye(iou_anchor_to_anchor.shape[0]) == 0).to(iou_anchor_to_anchor.device)
             different_target_mask = (ind[have_target_mask, 0] != ind[have_target_mask, 0].unsqueeze(1))
             iou_atoa_filtered = iou_anchor_to_anchor[other_mask & different_target_mask]
-            RepBox = self.smooth_ln(iou_atoa_filtered).sum()/iou_atoa_filtered.sum()
+            RepBox = self.smooth_ln(iou_atoa_filtered).sum() / iou_atoa_filtered.sum()
             RepBoxes.append(RepBox)
         return torch.stack(RepGTS).mean(), torch.stack(RepBoxes).mean()
 
-    def forward(self, x : torch.Tensor, targets=None):
+    def forward(self, x: torch.Tensor, targets=None):
         # Tensors for cuda support
         FloatTensor = torch.cuda.FloatTensor if x.is_cuda else torch.FloatTensor
 
@@ -1006,8 +1076,8 @@ class YOLOLayer(nn.Module):
             not_class_channels = 5
         prediction = (
             x.view(num_samples, self.num_anchors, self.num_classes + not_class_channels, grid_size, grid_size)
-            .permute(0, 1, 3, 4, 2)
-            .contiguous()
+                .permute(0, 1, 3, 4, 2)
+                .contiguous()
         )
 
         # Get outputs
@@ -1019,8 +1089,8 @@ class YOLOLayer(nn.Module):
         if not self.iou_aware:
             pred_cls = torch.sigmoid(prediction[..., 5:])  # Cls pred
         else:
-            pred_cls = torch.sigmoid(prediction[..., 5:-1])# Cls pred
-            pred_iou = torch.sigmoid(prediction[..., -1]) #IoU pred
+            pred_cls = torch.sigmoid(prediction[..., 5:-1])  # Cls pred
+            pred_iou = torch.sigmoid(prediction[..., -1])  # IoU pred
 
         # If grid size does not match current we compute new offsets
         if grid_size != self.grid_size or self.grid_x.is_cuda != x.is_cuda:
@@ -1047,11 +1117,11 @@ class YOLOLayer(nn.Module):
             return output, 0
 
         iou, class_mask, obj_mask, noobj_mask, tx, ty, tw, th, tcls, tconf, target_boxes = self.build_targets(
-                pred_boxes=pred_boxes,
-                pred_cls=pred_cls,
-                target=targets,
-                anchors=self.scaled_anchors,
-                ignore_thres=self.ignore_thres
+            pred_boxes=pred_boxes,
+            pred_cls=pred_cls,
+            target=targets,
+            anchors=self.scaled_anchors,
+            ignore_thres=self.ignore_thres
         )
 
         # Diagonal length of the smallest enclosing box (is already squared)
@@ -1061,17 +1131,18 @@ class YOLOLayer(nn.Module):
         # Euclidean distance between central points
         d = (tx[obj_mask] - x[obj_mask]) ** 2 + (ty[obj_mask] - y[obj_mask]) ** 2
 
-        rDIoU = d/c
+        rDIoU = d / c
 
         iou_masked = iou[obj_mask]
-        v = (4 / (math.pi ** 2)) * torch.pow((torch.atan(tw[obj_mask]/th[obj_mask])-torch.atan(w[obj_mask]/h[obj_mask])), 2)
+        v = (4 / (math.pi ** 2)) * torch.pow(
+            (torch.atan(tw[obj_mask] / th[obj_mask]) - torch.atan(w[obj_mask] / h[obj_mask])), 2)
 
         with torch.no_grad():
             S = 1 - iou_masked
             alpha = v / (S + v + 1e-7)
 
         if num_samples != 0:
-            CIoUloss = (1 - iou_masked + rDIoU + alpha * v).sum(0)/num_samples
+            CIoUloss = (1 - iou_masked + rDIoU + alpha * v).sum(0) / num_samples
         else:
             CIoUloss = 0
         # print(torch.isnan(pred_conf).sum())
@@ -1098,36 +1169,46 @@ class YOLOLayer(nn.Module):
             # print("pred iou masked", pred_iou_masked.shape)
             # print("pred iou masked", pred_iou_masked)
             # print(F.binary_cross_entropy(pred_iou_masked, iou_masked.detach()))
-            total_loss += F.binary_cross_entropy(pred_iou_masked, iou_masked.detach())   
+            total_loss += F.binary_cross_entropy(pred_iou_masked, iou_masked.detach())
 
         if self.repulsion_loss:
             repgt, repbox = self.calculate_repullsion(targets, output)
             total_loss += 0.5 * repgt + 0.5 * repbox
 
-        # print(f"C: {c}; D: {d}")
-        # print(f"Confidence is object: {loss_conf_obj}, Confidence no object: {loss_conf_noobj}")
-        # print(f"IoU: {iou_masked}; DIoU: {rDIoU}; alpha: {alpha}; v: {v}")
-        # print(f"CIoU : {CIoUloss.item()}; Confindence: {loss_conf.item()}; Class loss should be because of label smoothing: {loss_cls.item()}")
+        # print(f"C: {c}; D: {d}") print(f"Confidence is object: {loss_conf_obj}, Confidence no object: {
+        # loss_conf_noobj}") print(f"IoU: {iou_masked}; DIoU: {rDIoU}; alpha: {alpha}; v: {v}") print(f"CIoU : {
+        # CIoUloss.item()}; Confindence: {loss_conf.item()}; Class loss should be because of label smoothing: {
+        # loss_cls.item()}")
         return output, total_loss
 
 
 class YOLOv4(nn.Module):
-    def __init__(self, in_channels=3, n_classes=80, weights_path=None, pretrained=False, img_dim=608, anchors=None, dropblock=True, sam=False, eca=False, ws=False, iou_aware=False, coord=False, hard_mish=False, asff=False, repulsion_loss=False, acff=False, bcn=False, mbn=False):
+    def __init__(self, in_channels=3, n_classes=8, weights_path=None, pretrained=False, img_dim=608, anchors=None,
+                 dropblock=True, sam=False, eca=False, ws=False, iou_aware=False, coord=False, hard_mish=False,
+                 asff=False, repulsion_loss=False, acff=False, bcn=False, mbn=False):
         super().__init__()
         if anchors is None:
-            anchors = [[[10, 13], [16, 30], [33, 23]],
-                       [[30, 61], [62, 45], [59, 119]],
-                       [[116, 90], [156, 198], [373, 326]]]
+            # Anchors for BDD dataset
+            anchors = [[[5, 9], [11, 14], [7, 24]],
+                       [[20, 26], [14, 54], [37, 45]],
+                       [[56, 84], [96, 129], [140, 219]]]
+
+            # Anchors for COCO dataset
+            # anchors = [[[10, 13], [16, 30], [33, 23]],
+            #            [[30, 61], [62, 45], [59, 119]],
+            #            [[116, 90], [156, 198], [373, 326]]]
 
         output_ch = (4 + 1 + n_classes) * 3
         if iou_aware:
-            output_ch += 3 #1 for iou
+            output_ch += 3  # 1 for iou
 
         self.img_dim = img_dim
 
-        self.backbone = Backbone(in_channels, dropblock=False, sam=sam, eca=eca, ws=ws, coord=coord, hard_mish=hard_mish, bcn=bcn, mbn=mbn)
+        self.backbone = Backbone(in_channels, dropblock=False, sam=sam, eca=eca, ws=ws, coord=coord,
+                                 hard_mish=hard_mish, bcn=bcn, mbn=mbn)
 
-        self.neck = Neck(dropblock=dropblock, sam=sam, eca=eca, ws=ws, coord=coord, hard_mish=hard_mish, asff=asff, acff=acff, bcn=bcn, mbn=mbn)
+        self.neck = Neck(dropblock=dropblock, sam=sam, eca=eca, ws=ws, coord=coord, hard_mish=hard_mish, asff=asff,
+                         acff=acff, bcn=bcn, mbn=mbn)
 
         self.head = Head(output_ch, dropblock=False, sam=sam, eca=eca, ws=ws, coord=coord, hard_mish=hard_mish, bcn=bcn)
 
@@ -1142,7 +1223,9 @@ class YOLOv4(nn.Module):
                 print(f'[Warning] Ignoring {e}')
         elif pretrained:
             try:  # If we change input or output layers amount, we will have an option to use pretrained weights
-                self.load_state_dict(torch.hub.load_state_dict_from_url("https://github.com/VCasecnikovs/Yet-Another-YOLOv4-Pytorch/releases/download/V1.0/yolov4.pth"), strict=False)
+                self.load_state_dict(torch.hub.load_state_dict_from_url(
+                    "https://github.com/VCasecnikovs/Yet-Another-YOLOv4-Pytorch/releases/download/V1.0/yolov4.pth"),
+                                     strict=False)
             except RuntimeError as e:
                 print(f'[Warning] Ignoring {e}')
 
@@ -1163,7 +1246,7 @@ class YOLOv4(nn.Module):
 
         out = torch.cat((out1, out2, out3), dim=1)
 
-        loss = (loss1 + loss2 + loss3)/3
+        loss = (loss1 + loss2 + loss3) / 3
 
         return out, loss
 
